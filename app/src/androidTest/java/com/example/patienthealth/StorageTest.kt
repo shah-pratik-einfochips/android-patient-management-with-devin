@@ -87,6 +87,32 @@ class StorageTest {
         assertTrue(runCatching { repository.save(patient()) }.isFailure)
         assertEquals(1, database.patients().all().size)
     }
+    @Test fun deletePatientAndReadingRemovesRecords() = runBlocking {
+        repository.load()
+        val value = patient()
+        repository.save(value)
+        val reading = VitalReading(values = mapOf(VitalMetric.HEART_RATE to 70.0))
+        repository.addReading(value.id, reading)
+        repository.removeReading(value.id, reading.id)
+        assertTrue(repository.patients.value.single().vitals.isEmpty())
+        repository.remove(value.id)
+        assertTrue(repository.patients.value.isEmpty())
+        assertTrue(database.patients().all().isEmpty())
+    }
+    @Test fun removingUnknownPatientIsNoOp() = runBlocking {
+        repository.load()
+        repository.save(patient())
+        repository.remove("missing-id")
+        assertEquals(1, repository.patients.value.size)
+        assertEquals(1, database.patients().all().size)
+    }
+    @Test fun deletingReadingFromUnknownPatientFails() = runBlocking {
+        repository.load()
+        repository.save(patient())
+        assertTrue(runCatching { repository.removeReading("missing-id", "reading") }.isFailure)
+        assertEquals(1, repository.patients.value.size)
+    }
+
     @Test fun concurrentReadingsAreNotLost() = runBlocking {
         repository.load()
         val value = patient()
