@@ -19,6 +19,9 @@ interface PatientDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(record: EncryptedPatientRecord)
+
+    @Query("DELETE FROM patients WHERE id = :id")
+    suspend fun delete(id: String)
 }
 
 @Database(entities = [EncryptedPatientRecord::class], version = 1, exportSchema = true)

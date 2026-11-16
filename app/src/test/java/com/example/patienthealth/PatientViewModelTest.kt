@@ -34,6 +34,8 @@ class PatientViewModelTest {
             patients.value = listOf(patient)
         }
         override suspend fun addReading(patientId: String, reading: VitalReading) {}
+        override suspend fun removeReading(patientId: String, readingId: String) {}
+        override suspend fun remove(patientId: String) {}
     }
 
     @Test fun successfulLoadAndSave() = runTest(dispatcher) {

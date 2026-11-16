@@ -19,6 +19,8 @@ interface PatientRepository {
     suspend fun load()
     suspend fun save(patient: Patient)
     suspend fun addReading(patientId: String, reading: VitalReading)
+    suspend fun removeReading(patientId: String, readingId: String)
+    suspend fun remove(patientId: String)
 }
 
 class PatientValidationException(message: String) : IllegalArgumentException(message)
@@ -55,6 +57,22 @@ class LocalPatientRepository @Inject constructor(
             val patient = mutablePatients.value.firstOrNull { it.id == patientId }
                 ?: throw PatientValidationException("Patient is unavailable. Reopen the profile.")
             persist(patient.copy(vitals = patient.vitals + reading))
+        }
+    }
+
+    override suspend fun removeReading(patientId: String, readingId: String) = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val patient = mutablePatients.value.firstOrNull { it.id == patientId }
+                ?: throw PatientValidationException("Patient is unavailable. Reopen the profile.")
+            persist(patient.copy(vitals = patient.vitals.filterNot { it.id == readingId }))
+        }
+    }
+
+    override suspend fun remove(patientId: String) = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            if (mutablePatients.value.none { it.id == patientId }) return@withLock
+            database.patients().delete(patientId)
+            mutablePatients.value = mutablePatients.value.filterNot { it.id == patientId }
         }
     }
 

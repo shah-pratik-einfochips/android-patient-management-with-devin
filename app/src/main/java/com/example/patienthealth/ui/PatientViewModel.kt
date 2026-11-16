@@ -47,7 +47,12 @@ class PatientViewModel @Inject constructor(private val repository: PatientReposi
 
     fun save(patient: Patient, onSaved: () -> Unit) = write(onSaved) { repository.save(patient) }
     fun addReading(patientId: String, reading: VitalReading, onSaved: () -> Unit) = write(onSaved) { repository.addReading(patientId, reading) }
+    fun deleteReading(patientId: String, readingId: String) = write({}) { repository.removeReading(patientId, readingId) }
+    fun deletePatient(patientId: String, onDeleted: () -> Unit) = write(onDeleted) { repository.remove(patientId) }
     fun dismissError() { mutableState.value = mutableState.value.copy(error = null) }
+    fun reportFailure() {
+        mutableState.value = mutableState.value.copy(error = "The export could not be created. Please retry.")
+    }
 
     private fun write(onSaved: () -> Unit, operation: suspend () -> Unit) {
         if (mutableState.value.loading || mutableState.value.failed || mutableState.value.saving) return
