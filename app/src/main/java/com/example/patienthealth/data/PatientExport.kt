@@ -52,7 +52,7 @@ object PatientExport {
         if (value == Math.floor(value) && !value.isInfinite()) value.toLong().toString() else "%.1f".format(value)
 
     fun writeCsv(patient: Patient, cacheDir: File): File {
-        val file = File(exportDir(cacheDir), "patient-${patient.medicalId.ifBlank { patient.id }.take(24)}.csv")
+        val file = File(exportDir(cacheDir), "patient-${fileStem(patient)}.csv")
         file.writeText(csv(patient))
         return file
     }
@@ -79,8 +79,10 @@ object PatientExport {
             }
         }
         fun draw(text: String, paint: Paint = body) {
-            page.canvas.drawText(text, margin, y, paint)
-            advance()
+            wrap(text, 90).forEach { line ->
+                page.canvas.drawText(line, margin, y, paint)
+                advance()
+            }
         }
 
         draw("${patient.name} (${patient.medicalId})", title); advance()
@@ -112,7 +114,7 @@ object PatientExport {
             }
         }
         document.finishPage(page)
-        val file = File(exportDir(cacheDir), "patient-${patient.medicalId.ifBlank { patient.id }.take(24)}.pdf")
+        val file = File(exportDir(cacheDir), "patient-${fileStem(patient)}.pdf")
         file.outputStream().use { document.writeTo(it) }
         document.close()
         return file
@@ -125,10 +127,11 @@ object PatientExport {
             lines
         }
 
+    private fun fileStem(patient: Patient): String {
+        val raw = patient.medicalId.ifBlank { patient.id }
+        return raw.replace(Regex("[^A-Za-z0-9._-]"), "-").take(24)
+    }
+
     private fun exportDir(cacheDir: File): File =
         File(cacheDir, "exports").apply { mkdirs() }
-
-    fun clearExports(cacheDir: File) {
-        exportDir(cacheDir).deleteRecursively()
-    }
 }
