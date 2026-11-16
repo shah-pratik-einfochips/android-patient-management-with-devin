@@ -25,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -39,10 +40,13 @@ import java.time.format.DateTimeFormatter
 import kotlin.math.abs
 
 @Composable
-fun PatientDetail(patient: Patient, onBack: () -> Unit, onEdit: () -> Unit, onAddVitals: () -> Unit) {
+fun PatientDetail(patient: Patient, onBack: () -> Unit, onEdit: () -> Unit, onAddVitals: () -> Unit,
+                  onExport: (Boolean) -> Unit, onDeletePatient: () -> Unit, onDeleteReading: (String) -> Unit) {
     var metricName by rememberSaveable { mutableStateOf(VitalMetric.HEART_RATE.name) }
     val metric = VitalMetric.valueOf(metricName)
     var chart by rememberSaveable { mutableStateOf(true) }
+    var deletePatient by remember { mutableStateOf(false) }
+    var deleteReadingId by remember { mutableStateOf<String?>(null) }
     val recent = recentReadings(patient.vitals)
     val measured = recent.filter { it.values[metric] != null }
     val values = measured.mapNotNull { it.values[metric] }
@@ -59,6 +63,11 @@ fun PatientDetail(patient: Patient, onBack: () -> Unit, onEdit: () -> Unit, onAd
         if (patient.performedBy.isNotBlank()) Text("Performed by: ${patient.performedBy}")
         if (patient.referredBy.isNotBlank()) Text("Referred by: ${patient.referredBy}")
         Button(onClick = onAddVitals) { Text("Add vitals") }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(onClick = { onExport(false) }) { Text("Export CSV") }
+            TextButton(onClick = { onExport(true) }) { Text("Export PDF") }
+            TextButton(onClick = { deletePatient = true }) { Text("Delete patient", color = MaterialTheme.colorScheme.error) }
+        }
         SectionTitle("Last seven days")
         Choice("Vital type", metric.title, VitalMetric.entries.map { it.title }) {
             metricName = VitalMetric.entries.first { metric -> metric.title == it }.name
@@ -86,12 +95,26 @@ fun PatientDetail(patient: Patient, onBack: () -> Unit, onEdit: () -> Unit, onAd
         Text("Illustrative adult reference ranges only. Not clinical decision support.", style = MaterialTheme.typography.bodySmall)
         SectionTitle("All readings")
         if (patient.vitals.isEmpty()) Text("No vitals recorded yet.")
-        patient.vitals.sortedByDescending { it.timestamp }.forEach { reading -> ReadingCard(reading) }
+        patient.vitals.sortedByDescending { it.timestamp }.forEach { reading -> ReadingCard(reading) { deleteReadingId = it } }
+    }
+    if (deletePatient) {
+        androidx.compose.material3.AlertDialog(onDismissRequest = { deletePatient = false },
+            title = { Text("Delete patient") },
+            text = { Text("Delete ${patient.name} and all recorded vitals? This cannot be undone.") },
+            confirmButton = { TextButton(onClick = { deletePatient = false; onDeletePatient() }) { Text("Delete", color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton(onClick = { deletePatient = false }) { Text("Cancel") } })
+    }
+    deleteReadingId?.let { id ->
+        androidx.compose.material3.AlertDialog(onDismissRequest = { deleteReadingId = null },
+            title = { Text("Delete reading") },
+            text = { Text("Delete this vitals reading? This cannot be undone.") },
+            confirmButton = { TextButton(onClick = { deleteReadingId = null; onDeleteReading(id) }) { Text("Delete", color = MaterialTheme.colorScheme.error) } },
+            dismissButton = { TextButton(onClick = { deleteReadingId = null }) { Text("Cancel") } })
     }
 }
 
 @Composable
-private fun ReadingCard(reading: VitalReading) {
+private fun ReadingCard(reading: VitalReading, onDelete: (String) -> Unit) {
     var expanded by remember(reading.id) { mutableStateOf(false) }
     Card(Modifier.fillMaxWidth()) {
         Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -104,6 +127,7 @@ private fun ReadingCard(reading: VitalReading) {
                 }
                 reading.meanArterialPressure?.let { Text("MAP: ${formatValue(it)} mmHg") }
                 if (reading.symptoms.isNotBlank()) Text("Symptoms: ${reading.symptoms}")
+                TextButton(onClick = { onDelete(reading.id) }) { Text("Delete reading", color = MaterialTheme.colorScheme.error) }
             }
         }
     }
@@ -133,7 +157,16 @@ private fun VitalsChart(readings: List<VitalReading>, metric: VitalMetric) {
         }
         drawLine(Color.Gray, Offset(inset, size.height - inset), Offset(size.width - inset, size.height - inset))
         points.zipWithNext().forEach { (a, b) -> drawLine(primary, a, b, strokeWidth = 2.dp.toPx()) }
-        points.forEachIndexed { index, point -> drawCircle(if (metric.outsideReference(values[index])) warning else primary, if (index == selected) 7.dp.toPx() else 4.dp.toPx(), point) }
+        points.forEachIndexed { index, point ->
+            val size = if (index == selected) 7.dp.toPx() else 4.dp.toPx()
+            if (metric.outsideReference(values[index])) {
+                withTransform({ translate(point.x, point.y); rotate(45f, Offset.Zero) }) {
+                    drawRect(warning, Offset(-size, -size), androidx.compose.ui.geometry.Size(size * 2, size * 2))
+                }
+            } else {
+                drawCircle(primary, size, point)
+            }
+        }
     }
     Text("${formatDate(readings.first().timestamp)} — ${formatDate(readings.last().timestamp)}", style = MaterialTheme.typography.bodySmall)
     if (selected in readings.indices) Text("Selected: ${formatDate(readings[selected].timestamp)} · ${formatValue(values[selected])} ${metric.unit}")

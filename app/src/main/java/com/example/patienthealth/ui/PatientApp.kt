@@ -1,5 +1,6 @@
 package com.example.patienthealth.ui
 
+import android.content.Intent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -65,13 +66,17 @@ fun PatientApp(viewModel: PatientViewModel) {
             val id = entry.arguments?.getString("id")
             val patient = patients.firstOrNull { it.id == id }
             if (patient != null) {
+                val context = androidx.compose.ui.platform.LocalContext.current
                 PatientDetail(patient, onBack = { nav.popBackStack() }, onEdit = {
                     viewModel.editPatient(patient)
                     nav.navigate("edit/${patient.id}")
                 }, onAddVitals = {
                     viewModel.editVitals(VitalDraft())
                     nav.navigate("vitals/${patient.id}")
-                })
+                }, onExport = { pdf -> shareExport(context, patient, pdf, viewModel::reportFailure) },
+                    onDeletePatient = {
+                        viewModel.deletePatient(patient.id) { nav.popBackStack() }
+                    }, onDeleteReading = { readingId -> viewModel.deleteReading(patient.id, readingId) })
             } else Page("Patient unavailable", { nav.popBackStack() }) { Text("Return to the patient list.") }
         }
         composable("edit/{id}") { entry ->
@@ -95,6 +100,20 @@ fun PatientApp(viewModel: PatientViewModel) {
     state.error?.let { error ->
         AlertDialog(onDismissRequest = viewModel::dismissError, title = { Text("Unable to save") }, text = { Text(error) },
             confirmButton = { TextButton(onClick = viewModel::dismissError) { Text("OK") } })
+    }
+}
+
+private fun shareExport(context: android.content.Context, patient: Patient, pdf: Boolean, onError: () -> Unit) {
+    try {
+        val file = if (pdf) com.example.patienthealth.data.PatientExport.writePdf(patient, context.cacheDir)
+            else com.example.patienthealth.data.PatientExport.writeCsv(patient, context.cacheDir)
+        val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        context.startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND)
+            .setType(if (pdf) "application/pdf" else "text/csv")
+            .putExtra(Intent.EXTRA_STREAM, uri)
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION), "Share export"))
+    } catch (_: Exception) {
+        onError()
     }
 }
 
